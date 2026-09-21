@@ -82,7 +82,12 @@ function fmtInt(n) {
   return Math.round(n).toLocaleString('en-US')
 }
 
-/** Prices here range from ~1e-9 to ~1e4, so fixed decimals would either lie or be unreadable. */
+/**
+ * Prices here range from ~1e-9 to ~1e4, so fixed decimals would either lie or be unreadable.
+ * Below a thousandth the value is written out in decimals rather than scientific notation: COOK
+ * trades near $0.000084, and that figure is the headline of the Network panel, where "$8.434e-5"
+ * reads as a bug to anyone who is not a numerics person.
+ */
 function fmtUsd(n) {
   if (!Number.isFinite(n)) return '—'
   if (n === 0) return '$0'
@@ -90,7 +95,11 @@ function fmtUsd(n) {
   if (abs >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
   if (abs >= 1) return '$' + n.toFixed(2)
   if (abs >= 0.001) return '$' + n.toFixed(6)
-  return '$' + n.toExponential(3)
+  // Three significant digits. The cap matters: past twelve decimals the rounding runs out and the
+  // result would be a row of zeros that reads as "$0" — the exponent is the honest form there.
+  const decimals = Math.min(12, -Math.floor(Math.log10(abs)) + 3)
+  const fixed = n.toFixed(decimals).replace(/0+$/, '').replace(/\.$/, '')
+  return fixed === '0' ? '$' + n.toExponential(3) : '$' + fixed
 }
 
 function fmtCompact(n) {
