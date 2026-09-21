@@ -41,6 +41,11 @@ const WALLET_STD_SOURCES = [
 const NET_REFRESH_MS = 15000
 const CHART_BARS = 12
 
+// Rows rendered before the "show all" button. 169 pools rendered at once made the markets panel
+// 83% of the whole document and buried the token table below it. The data stays in memory — only
+// the render is capped — so the Depth figures keep computing over every pool.
+const MARKET_ROWS = 20
+
 // What the stamp writes when the message field is left empty. Kept here so the field preview,
 // the instruction data and the result box can never disagree about it.
 const DEFAULT_MEMO = 'gm from Cookie Board'
@@ -176,28 +181,46 @@ async function rpc(method, params = [], { timeout = 20000 } = {}) {
 
 let lastPerf = null
 
-function statCard(label, value, note) {
-  const card = el('div', 'card')
-  card.append(el('div', 'card-label', label))
-  card.append(el('div', 'card-value', value))
-  if (note) card.append(el('div', 'card-note', note))
-  return card
+/**
+ * One figure carries a panel; everything else is context for it.
+ *
+ * Both builders keep the `.card` / `.card-label` / `.card-value` / `.card-note` hooks that the
+ * fill functions and verify.mjs already look for — `.hero` and `.stat` are layout modifiers, not
+ * a new contract. The pending value stays "…" rather than going blank, so anything waiting for
+ * data cannot be fooled by an empty box.
+ */
+function heroCard(label, key) {
+  const node = el('div', 'card hero is-pending')
+  node.dataset.key = key
+  node.append(el('div', 'card-label', label))
+  node.append(el('div', 'card-value', '…'))
+  return node
 }
 
-function pendingCard(label) {
-  const card = statCard(label, '…')
-  card.classList.add('is-pending')
-  return card
+function statRow(label, key) {
+  const node = el('div', 'card stat is-pending')
+  node.dataset.key = key
+  node.append(el('div', 'card-label', label))
+  node.append(el('div', 'card-value', '…'))
+  return node
 }
 
+function statList(items) {
+  const list = el('div', 'stats')
+  for (const [label, key] of items) list.append(statRow(label, key))
+  return list
+}
+
+// First entry is the panel's hero. COOK price leads because it is the number someone opening a
+// chain dashboard came for; everything after it is context for that number.
 const NET_CARDS = [
+  ['COOK price', 'cookUsd'],
   ['Health', 'health'],
   ['Slot', 'slot'],
   ['Epoch', 'epoch'],
   ['Block height', 'blockHeight'],
   ['Transactions', 'txCount'],
   ['Real TPS', 'tps'],
-  ['COOK price', 'cookUsd'],
   ['Active tokens', 'activeTokens'],
   ['Liquidity markets', 'marketCount'],
   ['Indexed metadata', 'metadataCached'],
@@ -205,12 +228,8 @@ const NET_CARDS = [
 
 function renderNetSkeleton() {
   const box = $('net-cards')
-  // The human label, not the key — the key is camelCase and belongs in data-key only.
-  box.replaceChildren(...NET_CARDS.map(([label, key]) => {
-    const card = pendingCard(label)
-    card.dataset.key = key
-    return card
-  }))
+  const [hero, ...rest] = NET_CARDS
+  box.replaceChildren(heroCard(...hero), statList(rest))
 }
 
 function fillNetCard(key, value, note) {
@@ -230,7 +249,6 @@ function fillNetCard(key, value, note) {
 
 async function loadNetwork() {
   clearError($('net-error'))
-  renderNetSkeleton()
 
   // Status + markets come from the index; slot/epoch/health come straight from the chain.
   // They are independent, so a failure in one should not blank the other.
@@ -292,6 +310,10 @@ async function loadNetwork() {
     showError($('depth-error'), 'The market index did not respond, so these figures cannot be computed.')
   }
 
+  // Cleared whether or not every source answered: "busy" means a load is in flight, and after
+  // one attempt it is not, even when the attempt failed. The error banner carries the failure.
+  $('net-cards').setAttribute('aria-busy', 'false')
+  $('depth-cards').setAttribute('aria-busy', 'false')
   $('net-updated').textContent = 'updated ' + new Date().toLocaleTimeString()
 
   if (failures.length) {
@@ -320,9 +342,12 @@ function renderMarketsChart(markets) {
   }
 
   const rowH = 24
-  const labelW = 150
-  const valueW = 92
-  const width = 720
+  // Drawn at the width it actually has. A fixed 720 made a phone scroll sideways through a chart
+  // that was never wider than its own column.
+  const width = Math.max(300, Math.round(box.clientWidth || 720))
+  const narrow = width < 470
+  const labelW = narrow ? 92 : 150
+  const valueW = narrow ? 76 : 92
   const chartW = width - labelW - valueW
   const height = top.length * rowH + 10
   const max = top[0].liquidityUsd
@@ -333,6 +358,22 @@ function renderMarketsChart(markets) {
   svg.setAttribute('width', String(width))
   svg.setAttribute('height', String(height))
   svg.setAttribute('role', 'img')
+  // The values used to live only in per-bar <title> elements, which a screen reader never reaches
+  // and a keyboard user cannot hover. Name the actual figures here instead.
+  svg.setAttribute(
+    'aria-label',
+    `Bar chart of the ${top.length} largest markets by USD liquidity. ` +
+      top
+        .slice(0, 3)
+        // The venue is not decoration here: the same pair trades on several venues, so without it
+        // the top two entries can read as an accidental duplicate.
+        .map(
+          (m) =>
+            `${m.baseToken?.symbol ?? '?'}/${m.quoteToken?.symbol ?? '?'} on ${m.type ?? 'an unknown venue'} at ${fmtUsd(m.liquidityUsd)}`,
+        )
+        .join('; ') +
+      '. Every figure is listed in the table below.',
+  )
 
   top.forEach((m, i) => {
     const y = i * rowH + 5
@@ -384,6 +425,15 @@ function marketRow(m) {
   if (!(m.liquidityUsd > 0)) liq.classList.add('zero')
   tr.append(liq)
 
+  // These two columns exist because the sort control offers "Base price" and "Quote price".
+  // Sorting by a value the table never shows is a control that silently does nothing visible.
+  for (const side of ['baseToken', 'quoteToken']) {
+    const price = m[side]?.priceUsd ?? 0
+    const cell = el('td', 'num', price > 0 ? fmtUsd(price) : '—')
+    if (!(price > 0)) cell.classList.add('zero')
+    tr.append(cell)
+  }
+
   tr.append(el('td', '', m.liquidityDisplay || '—'))
 
   const id = el('td', 'addr')
@@ -397,6 +447,8 @@ function marketRow(m) {
   return tr
 }
 
+let marketsExpanded = false
+
 function applyMarketView() {
   const venue = $('venue-filter').value
   const sort = $('market-sort').value
@@ -409,8 +461,25 @@ function applyMarketView() {
     return (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0)
   })
 
+  const shown = marketsExpanded ? rows.length : Math.min(MARKET_ROWS, rows.length)
+
   const tbody = $('markets-table').querySelector('tbody')
-  tbody.replaceChildren(...rows.map(marketRow))
+  tbody.replaceChildren(...rows.slice(0, shown).map(marketRow))
+
+  // The scroll region carries the count so a screen reader hears how much of the table it is about
+  // to enter; the button below says the same thing for everyone else.
+  $('markets-scroll').setAttribute(
+    'aria-label',
+    `Liquidity markets, ${fmtInt(shown)} of ${fmtInt(rows.length)} pools shown`,
+  )
+
+  // The row count and the control that changes it have to agree, so the button carries the number
+  // it would reveal instead of a generic "more".
+  const more = $('btn-show-all-markets')
+  more.hidden = rows.length <= MARKET_ROWS
+  more.textContent = marketsExpanded
+    ? `Show top ${MARKET_ROWS} only`
+    : `Show all ${fmtInt(rows.length)} markets`
 }
 
 function renderMarkets(payload) {
@@ -462,11 +531,8 @@ const DEPTH_CARDS = [
 
 function renderDepthSkeleton() {
   const box = $('depth-cards')
-  box.replaceChildren(...DEPTH_CARDS.map(([label, key]) => {
-    const card = pendingCard(label)
-    card.dataset.key = key
-    return card
-  }))
+  const [hero, ...rest] = DEPTH_CARDS
+  box.replaceChildren(heroCard(...hero), statList(rest))
 }
 
 function fillDepthCard(key, value, note) {
@@ -1160,8 +1226,27 @@ function bind() {
   $('stamp-text').addEventListener('input', renderEffectiveMemo)
   $('btn-load-tokens').addEventListener('click', loadFullDirectory)
 
-  $('venue-filter').addEventListener('change', applyMarketView)
+  // Changing the filter is a fresh view, so it collapses back to the short list rather than
+  // leaving an expanded table behind a control that no longer describes it.
+  $('venue-filter').addEventListener('change', () => {
+    marketsExpanded = false
+    applyMarketView()
+  })
   $('market-sort').addEventListener('change', applyMarketView)
+
+  $('btn-show-all-markets').addEventListener('click', () => {
+    marketsExpanded = !marketsExpanded
+    applyMarketView()
+  })
+
+  // The chart is drawn to its container's width, so a width change has to redraw it.
+  let chartResizeTimer = null
+  window.addEventListener('resize', () => {
+    clearTimeout(chartResizeTimer)
+    chartResizeTimer = setTimeout(() => {
+      if (allMarkets.length) renderMarketsChart(allMarkets)
+    }, 200)
+  })
 
   $('token-search').addEventListener('input', (e) => {
     clearTimeout(searchTimer)
@@ -1176,6 +1261,8 @@ async function main() {
   bind()
   resetSteps()
   renderEffectiveMemo()
+  // Built once, here, and never again. Rebuilding the skeleton inside loadNetwork blanked every
+  // figure back to "…" on each 15s refresh, which reads as the page breaking rather than updating.
   renderNetSkeleton()
   renderDepthSkeleton()
 

@@ -71,6 +71,24 @@ const filtered = await page.$$eval('#markets-table tbody tr', (r) => r.length)
 console.log('\n=== VENUE FILTER (COOKIESWAP CPAMM) ===')
 console.log('  rows          :', filtered)
 
+// The row cap must be a render cap, not a data cap. If it ever becomes a data cap the Depth
+// figures above silently start describing a subset of the chain, which is the one thing this
+// panel exists not to do.
+console.log('\n=== MARKET ROW CAP ===')
+await page.selectOption('#venue-filter', '')
+await page.waitForTimeout(500)
+const cappedRows = await page.$$eval('#markets-table tbody tr', (r) => r.length)
+const moreLabel = await page.$eval('#btn-show-all-markets', (b) => (b.hidden ? '' : b.textContent.trim()))
+await page.click('#btn-show-all-markets')
+await page.waitForTimeout(500)
+const expandedRows = await page.$$eval('#markets-table tbody tr', (r) => r.length)
+const collapseLabel = await page.$eval('#btn-show-all-markets', (b) => (b.hidden ? '' : b.textContent.trim()))
+console.log('  capped rows   :', cappedRows)
+console.log('  button        :', moreLabel || '(hidden)')
+console.log('  expanded rows :', expandedRows)
+console.log('  button after  :', collapseLabel || '(hidden)')
+console.log('  cap reveals   :', expandedRows > cappedRows ? 'yes' : 'NO')
+
 // ---------------------------------------------------------------------------
 // Depth panel. Recompute the same figures here from the raw API and compare — a derived panel
 // that quietly disagrees with the data it claims to derive from is worse than no panel at all.

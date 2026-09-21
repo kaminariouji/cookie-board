@@ -20,7 +20,7 @@ page is fully useful to someone who has never bridged a token in:
 |---|---|---|
 | Network | `rpc.cookiescan.io` + `api.cookiescan.io` | Health, slot, epoch, block height, lifetime transaction count, real TPS (excluding votes), COOK price, token and market counts |
 | Depth & concentration | computed in the browser from the rows below | Figures the index never returns — see below |
-| Liquidity markets | `GET /api/markets` | 169 pools across CookieSwap and CookieBox, ranked by USD liquidity, with an SVG bar chart and a venue filter |
+| Liquidity markets | `GET /api/markets` | Every pool across CookieSwap and CookieBox, ranked by USD liquidity, with an SVG bar chart, a venue filter, base and quote prices, and the top 20 rows rendered by default |
 | Token analytics | `GET /api/tokens`, `GET /api/tokens/search` | 6,545 indexed tokens with price, market cap, liquidity and holder count |
 
 **The derived panel is the point of the read half.** The index reports one row per pool and one row
@@ -56,6 +56,15 @@ So the analytics load for everyone, and the stamp is opt-in.
 **The message field shows what it will actually send.** Leaving it empty stamps the default rather
 than an empty memo, so the line under the field always prints the resolved string. An empty box
 with a filled-looking placeholder is how a stamp ends up carrying text nobody typed.
+
+**One figure leads each panel, and the market table is capped.** Every network figure used to be a
+card of identical size and weight, which made the COOK price read exactly as loudly as the
+metadata cache count — so nothing read as important. Each panel now leads with the one number it
+exists for, at 42px against 14px for the rest. The market table renders the top 20 pools with a
+control that reveals the remainder: at 169 rows it was 83% of the whole document and pushed the
+token table far past the point anyone would scroll. The cap is on the render only — the depth
+figures still compute over every pool — and `verify.mjs` checks that the control really does
+reveal the rest and that the venue filter resets it.
 
 **The wallet integration follows the standard, not a guess.** Nightly documents
 `window.nightly.solana`, but it is also a Solana Wallet Standard wallet. Cookie Board checks the

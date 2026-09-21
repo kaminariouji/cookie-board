@@ -5,3 +5,4 @@ verify-shot.png
 .env
 .env.*
 *.log
+.impeccable/
