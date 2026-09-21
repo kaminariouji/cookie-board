@@ -296,23 +296,37 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp is confirmed on chain, signed with Nightly.** A funded wallet signed a stamp and the
-  app read the result back as confirmed. Read straight from Cookie Chain's RPC, not from the app:
+- **The stamp is confirmed on chain, signed with Nightly.** Two stamps landed. Both were read back
+  straight from Cookie Chain's RPC, not from the app:
 
   ```
+  # message field left empty — the default is what gets written
   signature : 23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
   slot      : 26446164
   err       : null
   fee       : 5000 lamports
   log       : Program log: Memo (len 20): "gm from Cookie Board"
+
+  # a message typed into the field, carried through verbatim
+  signature : 2S2FF8BA5hnyzSiNvLc327HXKhRQ8LqCDZqjhVu8K5kQyHQ2gZZYcuo2RtBaNYP5G7hhUhJ1WiMiiDTjNqKARLUv
+  slot      : 26451922
+  err       : null
+  fee       : 5000 lamports
+  log       : Program log: Memo (len 20): "hold on , lemme cook"
   ```
 
   https://cookiescan.io/tx/23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
+  https://cookiescan.io/tx/2S2FF8BA5hnyzSiNvLc327HXKhRQ8LqCDZqjhVu8K5kQyHQ2gZZYcuo2RtBaNYP5G7hhUhJ1WiMiiDTjNqKARLUv
+
+  The second is the one that matters. The first carried the default because the field was empty, so
+  it never proved that typed text survives the trip — and an empty field with a filled-looking
+  placeholder is exactly how a stamp ends up carrying a message nobody wrote. The second carried a
+  message typed into the field, character for character, odd spacing included.
 
   Nightly is the wallet the setup steps below recommend, and it is the one that failed first: it
   publishes its signing features on the wallet rather than the account, so the stamp reported
   "this wallet exposes neither signAndSendTransaction nor signTransaction". That bug is fixed, and
-  this transaction is the proof. The run exercised every hop in one pass — build, wallet
+  these transactions are the proof. Both runs exercised every hop in one pass — build, wallet
   signature, broadcast, confirmation — and each of the three wallet bugs below was only visible
   against a real wallet, never in the individual hop tests.
 - **The stamp needs a funded wallet, and Cookie Chain has no official faucet.** The dashboard
