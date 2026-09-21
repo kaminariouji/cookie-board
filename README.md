@@ -5,6 +5,7 @@ chain — built for the **Create an App on Cookie Chain** bounty.
 
 Live app: <https://cookie-board-4fv.pages.dev/>
 Repository: <https://github.com/kaminariouji/cookie-board>
+Launch thread: <https://x.com/kaminariouji/status/2102039454127116698>
 
 ---
 
