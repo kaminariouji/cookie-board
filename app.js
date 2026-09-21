@@ -692,8 +692,9 @@ async function onWalletConnected() {
   const address = wallet.account.address
   setWalletState('Connected ' + shortAddr(address, 8, 6), 'connected')
   updateWalletButtons()
+  // refreshBalance owns the stamp button: it is the only thing that knows whether this wallet
+  // can pay a fee. Re-enabling it here afterwards would override the zero-balance guard.
   await refreshBalance()
-  $('btn-stamp').disabled = false
 }
 
 async function refreshBalance() {
@@ -720,7 +721,14 @@ async function refreshBalance() {
     }
   } catch (err) {
     setWalletState('Connected ' + shortAddr(wallet.account.address, 8, 6) + ' · balance unavailable', 'connected')
-    showError($('stamp-error'), 'Balance lookup failed: ' + err.message)
+    // Without a known balance the stamp could only produce a transaction that fails on chain,
+    // so keep it disabled rather than letting someone sign for nothing.
+    showError(
+      $('stamp-error'),
+      'Could not read this wallet’s COOK balance, so the stamp stays disabled — it cannot pay a ' +
+        'network fee without it. Reconnect to try again. (' + err.message + ')',
+    )
+    $('btn-stamp').disabled = true
   }
 }
 

@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { chromium } from 'playwright'
-import { PublicKey } from '@solana/web3.js'
+import { PublicKey, Keypair } from '@solana/web3.js'
 
 const results = []
 const check = (name, ok, extra = '') => {
@@ -84,10 +84,16 @@ await page.waitForFunction(
 
 // Stand-in wallet copying the shape that broke things: signing features only on the wallet,
 // an account with no `features`, and a signature returned as raw bytes the way Phantom does.
-await page.evaluate(() => {
+//
+// The address is freshly generated, so it is guaranteed to hold no COOK — which is what the
+// zero-balance guard has to react to.
+const emptyAddress = Keypair.generate().publicKey.toBase58()
+console.log('\nusing an address with no balance:', emptyAddress)
+
+await page.evaluate((address) => {
   window.__stampCalls = []
   const account = {
-    address: 'DL9GPSXrhAEnU5Ads3HLhEJ9fCDLpnmmkzxoe712W4xP',
+    address,
     publicKey: new Uint8Array(32),
     chains: ['solana:mainnet'],
     features: {},
@@ -112,7 +118,7 @@ await page.evaluate(() => {
       },
     },
   }
-})
+}, emptyAddress)
 
 await page.waitForFunction(
   () => document.getElementById('wallet-state').textContent === 'Nightly detected',
@@ -126,6 +132,28 @@ await page.waitForFunction(
   { timeout: 20000 },
 )
 
+// The balance line only appears once refreshBalance has actually decided something.
+await page.waitForFunction(
+  () => document.getElementById('wallet-state').textContent.includes('·'),
+  null,
+  { timeout: 30000 },
+).catch(() => {})
+
+const zeroBalance = await page.evaluate(() => ({
+  state: document.getElementById('wallet-state').textContent,
+  stampDisabled: document.getElementById('btn-stamp').disabled,
+  error: document.getElementById('stamp-error').hidden ? '' : document.getElementById('stamp-error').textContent,
+}))
+
+console.log('\n=== zero-balance guard ===')
+console.log('wallet state   :', zeroBalance.state)
+console.log('stamp disabled :', zeroBalance.stampDisabled)
+console.log('message        :', zeroBalance.error.slice(0, 120))
+
+check('zero balance keeps the stamp button disabled', zeroBalance.stampDisabled === true)
+check('the reason is explained to the user', /0 COOK|cannot pay/i.test(zeroBalance.error))
+
+// The guard is what we just tested; now force it open to exercise the signing path itself.
 await page.evaluate(() => { document.getElementById('btn-stamp').disabled = false })
 await page.click('#btn-stamp')
 
