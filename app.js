@@ -849,6 +849,45 @@ function signingFeature(name) {
   return null
 }
 
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+/** Base58 encoding, matching the reference bs58 implementation. */
+function bytesToBase58(bytes) {
+  const source = Array.from(bytes)
+  if (source.length === 0) return ''
+
+  const digits = [0]
+  for (let i = 0; i < source.length; i++) {
+    let carry = source[i]
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8
+      digits[j] = carry % 58
+      carry = (carry / 58) | 0
+    }
+    while (carry > 0) {
+      digits.push(carry % 58)
+      carry = (carry / 58) | 0
+    }
+  }
+
+  let out = ''
+  for (let k = 0; source[k] === 0 && k < source.length - 1; k++) out += BASE58_ALPHABET[0]
+  for (let q = digits.length - 1; q >= 0; q--) out += BASE58_ALPHABET[digits[q]]
+  return out
+}
+
+/**
+ * Wallets disagree about this one field. The standard says signAndSendTransaction returns the
+ * signature as raw bytes, and Phantom does exactly that; Nightly returns a base58 string.
+ * confirmTransaction and the explorer link only accept text, so normalise here instead of at
+ * every call site.
+ */
+function normalizeSignature(value) {
+  if (typeof value === 'string') return value
+  if (value instanceof Uint8Array || Array.isArray(value)) return bytesToBase58(value)
+  return null
+}
+
 async function stamp() {
   const btn = $('btn-stamp')
   const resultBox = $('stamp-result')
@@ -902,7 +941,7 @@ async function stamp() {
       if (signAndSend.needsAccount) input.account = wallet.account
       const outputs = await signAndSend.feature.signAndSendTransaction(input)
       const first = Array.isArray(outputs) ? outputs[0] : outputs
-      signature = first?.signature ?? first
+      signature = normalizeSignature(first?.signature ?? first)
       if (!signature) throw new Error('Wallet returned no signature.')
       markStep('sign', 'is-done')
       markStep('send', 'is-done')

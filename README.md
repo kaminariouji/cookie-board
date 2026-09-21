@@ -56,6 +56,19 @@ handled explicitly, and both would have been missed by reading the spec alone:
   now searches both, and passes `account` explicitly when the feature came from the wallet, which
   is what that variant requires.
 
+A third difference showed up only when signing with a funded wallet. Wallets disagree about the
+type of the value `signAndSendTransaction` returns:
+
+| Wallet | Returns | Handled by |
+|---|---|---|
+| Nightly | base58 **string** | passed through |
+| Phantom | raw **byte array** | `normalizeSignature()` encodes it |
+
+`confirmTransaction` and the explorer link only accept base58 text, so a byte array used to fail
+with *"signature must be base58 encoded"* — after the transaction had already been broadcast.
+The encoding is done in `app.js` rather than pulling in a base58 dependency, and
+`verify-signing.mjs` checks it against web3.js's own codec over 200 random values.
+
 **Dependencies load from two CDNs.** Solana libraries are large; if one host is slow the page
 would render blank. `loadModule()` walks a list of sources and only gives up when all fail.
 
@@ -254,13 +267,12 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp has not been exercised end-to-end with a funded wallet.** Three of the four hops are
-  proven: the Memo instruction by Cookie Chain's own runtime simulation (`verify-stamp.mjs`),
-  wallet detection against the real Nightly extension, and the signing call against a stand-in
-  that copies Nightly's feature layout (`verify-signing.mjs`). The last hop — a real signature
-  over a real balance — needs COOK, and obtaining COOK requires bridging assets from Solana.
-  The UI detects a zero balance and explains how to fix it rather than failing at the signature
-  prompt.
+- **The stamp has not been confirmed on chain end to end.** A funded wallet has signed and
+  broadcast a real stamp — Phantom, over a real COOK balance — and the transaction left the app
+  as `sent`. What is still unproven is the confirmation step: the run that got that far hit the
+  base58 bug above, so the app never read the result back. Every hop is now verified
+  individually (`verify-stamp.mjs` for the instruction, `verify-signing.mjs` for encoding and
+  the signing call), but nobody has yet watched a signature come back `confirmed`.
 - **Wallet-reported chain ids vary.** A wallet that lists the account as `solana:mainnet` while
   pointed at Cookie Chain's RPC will still sign the bytes we hand it, because the transaction is
   serialized locally with a Cookie Chain blockhash. If a wallet rejects on chain mismatch, the
