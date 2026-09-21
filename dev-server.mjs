@@ -1,5 +1,5 @@
-// Server statis minimal untuk menguji app di browser sungguhan.
-// Dipakai hanya untuk verifikasi lokal — deployment produksi ke Cloudflare Pages.
+// Minimal static server for testing the app in a real browser.
+// Local verification only — production is deployed to Cloudflare Pages.
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -20,7 +20,7 @@ createServer(async (req, res) => {
   let path = decodeURIComponent(url.pathname)
   if (path === '/') path = '/index.html'
 
-  // Cegah keluar dari ROOT.
+  // Refuse to serve anything outside ROOT.
   const full = join(ROOT, normalize(path).replace(/^(\.\.[/\\])+/, ''))
   if (!full.startsWith(ROOT)) {
     res.writeHead(403).end('forbidden')

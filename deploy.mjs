@@ -1,9 +1,9 @@
-// Deploy Cookie Board ke Cloudflare Pages.
+// Deploys Cookie Board to Cloudflare Pages.
 //
-// Kenapa ada skrip ini: `wrangler pages deploy .` mengunggah SELURUH direktori, dan
-// `.assetsignore` tidak diterapkan pada jalur Pages — akibatnya verify.mjs, README.md,
-// package.json, dan draft X thread ikut terekspos di URL publik. Di sini hanya tiga berkas
-// yang benar-benar dipakai browser yang disalin ke direktori staging, lalu itu yang diunggah.
+// Why this script exists: `wrangler pages deploy .` uploads the ENTIRE directory, and
+// `.assetsignore` is not honoured on the Pages path — which exposes verify.mjs, README.md,
+// package.json and the launch-thread draft at the public URL. Here only the three files the
+// browser actually needs are copied into a staging directory, and that is what gets uploaded.
 import { mkdir, rm, copyFile, readdir } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
@@ -21,11 +21,11 @@ for (const f of ASSETS) await copyFile(join(ROOT, f), join(STAGE, f))
 const staged = await readdir(STAGE)
 console.log('staging:', staged.join(', '))
 if (staged.length !== ASSETS.length) {
-  throw new Error('staging tidak sesuai harapan — batal deploy')
+  throw new Error('staging does not match expectations — aborting deploy')
 }
 
-// Panggil wrangler sebagai skrip Node, bukan lewat `npx` + shell: meneruskan argumen
-// melalui shell di Windows merusak daftar argumen dan wrangler malah mencetak bantuan.
+// Invoke wrangler as a Node script rather than through `npx` + shell: passing arguments through
+// a shell on Windows mangles the argument list and wrangler just prints its help text.
 const wrangler = join(globalRoot(), 'wrangler', 'bin', 'wrangler.js')
 
 function globalRoot() {
@@ -33,6 +33,8 @@ function globalRoot() {
   return (r.stdout || '').trim()
 }
 
+// Wrangler reads CLOUDFLARE_API_TOKEN from a .env file in the working directory, so run this
+// script from wherever that file lives — not from inside this directory.
 const r = spawnSync(
   process.execPath,
   [wrangler, 'pages', 'deploy', STAGE, '--project-name', PROJECT, '--branch', 'main', '--commit-dirty=true'],

@@ -180,10 +180,13 @@ node verify-wallet.mjs https://cookie-board-4fv.pages.dev/
 ```
 
 ```
-LULUS  awal: state bilang tidak terdeteksi
-LULUS  akhir: state jadi "Nightly detected"
-LULUS  akhir: tombol Connect muncul lagi
-SEMUA LULUS
+initial: state reports no wallet          PASS
+initial: Connect button hidden            PASS
+initial: install link shown               PASS
+final: state becomes "Nightly detected"   PASS
+final: Connect button visible again       PASS
+final: no console errors                  PASS
+ALL PASS
 ```
 
 `verify-signing.mjs` covers the wallet-level signing features. It injects a stand-in that copies
@@ -283,8 +286,6 @@ cookie-board/
 ├── verify-wallet.mjs reproduces late wallet injection and checks the UI recovers
 ├── verify-signing.mjs checks wallet-level signing features are reached
 ├── find-payer.mjs    finds a real funded account to use as a simulation fee payer
-├── X-THREAD.md       the launch thread
-├── SUBMISSION.md     the three eligibility answers, filled in
 └── package.json      dev dependencies for the verification scripts
 ```
 

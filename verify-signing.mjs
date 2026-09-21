@@ -1,9 +1,9 @@
-// Membuktikan perbaikan jalur signing: Nightly menaruh fitur tanda tangan di level WALLET
-// (`window.nightly.solana.features`), sedangkan kode lama hanya mencarinya di level ACCOUNT.
+// Proves the signing-path fix: Nightly publishes its signing features on the WALLET
+// (`window.nightly.solana.features`), while the old code only looked on the ACCOUNT.
 //
-// Uji ini menyuntik wallet tiruan yang meniru struktur itu — account TANPA `features` — lalu
-// memastikan tombol Stamp benar-benar memanggil signAndSendTransaction, dan memanggilnya dengan
-// `account` disertakan (syarat varian fitur level wallet).
+// This test injects a stand-in that copies that shape — an account with NO `features` — then
+// checks that the Stamp button really reaches signAndSendTransaction, and passes `account` in
+// (which is what the wallet-level variant of the feature requires).
 import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 
@@ -13,7 +13,7 @@ const server = TARGET.includes('localhost')
   ? spawn(process.execPath, ['dev-server.mjs', String(PORT)], { stdio: 'ignore' })
   : null
 if (server) await new Promise((r) => setTimeout(r, 1200))
-console.log('menguji:', TARGET)
+console.log('testing:', TARGET)
 
 const browser = await chromium.launch()
 const page = await browser.newPage()
@@ -27,14 +27,14 @@ await page.waitForFunction(
   { timeout: 20000 },
 )
 
-// Wallet tiruan: fitur tanda tangan hanya ada di level wallet, bukan di account.
+// Stand-in wallet: signing features exist only on the wallet, never on the account.
 await page.evaluate(() => {
   window.__stampCalls = []
   const account = {
     address: 'DL9GPSXrhAEnU5Ads3HLhEJ9fCDLpnmmkzxoe712W4xP',
     publicKey: new Uint8Array(32),
     chains: ['solana:mainnet'],
-    features: {}, // <- kosong, persis seperti yang dikembalikan Nightly
+    features: {}, // <- empty, exactly as Nightly returns it
   }
   window.nightly = {
     solana: {
@@ -61,13 +61,13 @@ await page.evaluate(() => {
   }
 })
 
-// Wallet muncul belakangan -> UI harus pulih sendiri.
+// The wallet appears late -> the UI has to recover on its own.
 await page.waitForFunction(
   () => document.getElementById('wallet-state').textContent === 'Nightly detected',
   null,
   { timeout: 20000 },
 )
-console.log('wallet terdeteksi     : ya')
+console.log('wallet detected       : yes')
 
 await page.click('#btn-connect')
 await page.waitForFunction(
@@ -77,8 +77,8 @@ await page.waitForFunction(
 )
 console.log('connect               :', (await page.textContent('#wallet-state')).trim())
 
-// Akun uji ini tidak punya COOK, jadi tombolnya dinonaktifkan refreshBalance. Untuk menguji
-// jalur signing saja, aktifkan kembali.
+// This test account holds no COOK, so refreshBalance disables the button. Re-enable it to
+// exercise the signing path itself.
 await page.evaluate(() => { document.getElementById('btn-stamp').disabled = false })
 await page.click('#btn-stamp')
 
@@ -86,21 +86,21 @@ await page.waitForFunction(() => window.__stampCalls.length > 0, null, { timeout
 const calls = await page.evaluate(() => window.__stampCalls)
 const stampError = await page.$eval('#stamp-error', (n) => (n.hidden ? '' : n.textContent.trim()))
 
-console.log('\npanggilan ke wallet   :', JSON.stringify(calls))
-console.log('pesan error stamp     :', stampError || '(tidak ada)')
+console.log('\ncalls into the wallet :', JSON.stringify(calls))
+console.log('stamp error message   :', stampError || '(none)')
 
 console.log('\n' + '='.repeat(60))
 const checks = [
-  ['signAndSendTransaction benar-benar dipanggil', calls.length === 1],
-  ['dipanggil dengan account disertakan', calls[0]?.hasAccount === true],
-  ['account yang dikirim alamat yang benar', calls[0]?.accountAddress === 'DL9GPSXrhAEnU5Ads3HLhEJ9fCDLpnmmkzxoe712W4xP'],
-  ['tidak muncul error "exposes neither"', !/exposes neither/.test(stampError)],
-  ['tidak ada page error', pageErrors.length === 0],
+  ['signAndSendTransaction is actually reached', calls.length === 1],
+  ['called with account passed in', calls[0]?.hasAccount === true],
+  ['account sent is the right address', calls[0]?.accountAddress === 'DL9GPSXrhAEnU5Ads3HLhEJ9fCDLpnmmkzxoe712W4xP'],
+  ['no "exposes neither" error', !/exposes neither/.test(stampError)],
+  ['no page errors', pageErrors.length === 0],
 ]
-for (const [name, ok] of checks) console.log((ok ? 'LULUS  ' : 'GAGAL  ') + name)
+for (const [name, ok] of checks) console.log((ok ? 'PASS  ' : 'FAIL  ') + name)
 
 const failed = checks.filter(([, ok]) => !ok).length
-console.log('\n' + (failed === 0 ? 'SEMUA LULUS' : failed + ' GAGAL'))
+console.log('\n' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED'))
 
 await browser.close()
 server?.kill()
