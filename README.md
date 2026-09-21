@@ -267,8 +267,8 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp is confirmed on chain.** A funded wallet signed a stamp and the app read the result
-  back as confirmed. Read straight from Cookie Chain's RPC, not from the app:
+- **The stamp is confirmed on chain, signed with Nightly.** A funded wallet signed a stamp and the
+  app read the result back as confirmed. Read straight from Cookie Chain's RPC, not from the app:
 
   ```
   signature : 23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
@@ -280,9 +280,12 @@ These are real and worth stating rather than hiding.
 
   https://cookiescan.io/tx/23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
 
-  That run exercised every hop in one pass: build, wallet signature, broadcast, confirmation. The
-  three wallet bugs below were found on the way there, and each one was only visible against a
-  real wallet — none of them showed up in the individual hop tests.
+  Nightly is the wallet the setup steps below recommend, and it is the one that failed first: it
+  publishes its signing features on the wallet rather than the account, so the stamp reported
+  "this wallet exposes neither signAndSendTransaction nor signTransaction". That bug is fixed, and
+  this transaction is the proof. The run exercised every hop in one pass — build, wallet
+  signature, broadcast, confirmation — and each of the three wallet bugs below was only visible
+  against a real wallet, never in the individual hop tests.
 - **The stamp needs a funded wallet, and Cookie Chain has no official faucet.** The dashboard
   above works without any COOK; only the stamp needs a balance, because it pays a network fee.
   Getting COOK means bridging from Solana or receiving it from an existing wallet.
