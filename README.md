@@ -59,8 +59,17 @@ with a filled-looking placeholder is how a stamp ends up carrying text nobody ty
 
 **The wallet integration follows the standard, not a guess.** Nightly documents
 `window.nightly.solana`, but it is also a Solana Wallet Standard wallet. Cookie Board checks the
-documented path first and then falls back to the Wallet Standard registry, so any compliant
-wallet works and Nightly is always preferred.
+documented path first and then falls back to the Wallet Standard registry, so any wallet the
+registry announces gets detected and Nightly is always preferred.
+
+**Being detected is not the same as being able to stamp.** The stamp is a Cookie Chain
+transaction, so the wallet also has to be pointable at Cookie Chain — and a compliant wallet is not
+automatically one. Four wallets were tried; only Nightly accepts a custom Solana network. Phantom,
+Solflare and MetaMask either refused or stayed on Solana mainnet, which is why they quote the fee
+in SOL instead of COOK. They still connect, and the app still shows their balance, because that
+balance is read from Cookie Chain's RPC rather than from the wallet; the stamp is the part that
+cannot work. That is a limit of those wallets, not of the app. Other wallets were not tried, so
+this is a record of what was tested rather than a list of what exists.
 
 Two things about Nightly were only learned by testing against the real extension. Both are now
 handled explicitly, and both would have been missed by reading the spec alone:
@@ -103,7 +112,9 @@ diverge from the source, and nothing to rebuild before deploying.
 ### Requirements
 
 - A modern browser
-- [Nightly](https://nightly.app) (or any Solana Wallet Standard wallet) — **only needed for the on-chain stamp**
+- [Nightly](https://nightly.app) — **only needed for the on-chain stamp**, and the only wallet tested
+  that can be pointed at Cookie Chain. See the wallet note above: other wallets connect and are
+  detected, but cannot stamp.
 - Node.js 18+ — **only needed to run the local dev server**
 
 ### Run locally
