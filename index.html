@@ -42,6 +42,24 @@
     <p id="net-error" class="error" hidden></p>
   </section>
 
+  <!-- ============ DEPTH ============ -->
+  <section class="panel" aria-labelledby="h-depth">
+    <div class="panel-head">
+      <h2 id="h-depth">Depth &amp; concentration</h2>
+      <span class="muted">derived here, not served by the index</span>
+    </div>
+
+    <p class="lede">
+      The index reports every pool and every token, one row at a time. It never reports what they
+      add up to. Every figure below is computed in your browser from the same public endpoints the
+      panels further down read &mdash; no extra request, and no value here is a field the API
+      returns.
+    </p>
+
+    <div id="depth-cards" class="cards" aria-busy="true"></div>
+    <p id="depth-error" class="error" hidden></p>
+  </section>
+
   <!-- ============ ON-CHAIN STAMP ============ -->
   <section class="panel" aria-labelledby="h-stamp">
     <div class="panel-head">
@@ -57,11 +75,12 @@
 
     <div class="stamp-grid">
       <label class="field">
-        <span>Message</span>
-        <input id="stamp-text" type="text" maxlength="120" placeholder="gm from Cookie Board" />
+        <span>Message (optional)</span>
+        <input id="stamp-text" type="text" maxlength="120" placeholder="Leave blank to use the default" />
       </label>
       <button id="btn-stamp" class="btn btn-primary" type="button" disabled>Stamp on-chain</button>
     </div>
+    <p id="stamp-effective" class="field-note"></p>
 
     <ol id="stamp-steps" class="steps" aria-live="polite">
       <li data-step="build">Build transaction</li>

@@ -19,8 +19,25 @@ page is fully useful to someone who has never bridged a token in:
 | Panel | Source | What it shows |
 |---|---|---|
 | Network | `rpc.cookiescan.io` + `api.cookiescan.io` | Health, slot, epoch, block height, lifetime transaction count, real TPS (excluding votes), COOK price, token and market counts |
+| Depth & concentration | computed in the browser from the rows below | Figures the index never returns — see below |
 | Liquidity markets | `GET /api/markets` | 169 pools across CookieSwap and CookieBox, ranked by USD liquidity, with an SVG bar chart and a venue filter |
 | Token analytics | `GET /api/tokens`, `GET /api/tokens/search` | 6,545 indexed tokens with price, market cap, liquidity and holder count |
+
+**The derived panel is the point of the read half.** The index reports one row per pool and one row
+per token; it never reports what they add up to. So Cookie Board computes that itself, from rows
+already in memory — no extra request. Read live from the chain on 2026-09-21:
+
+| Figure | Value then | Why it matters |
+|---|---|---|
+| Top 5 concentration | **63.5%** | `$4,030` of `$6,346` total liquidity sits in 5 of 169 pools |
+| Median pool | **$0.003305** | The mean pool is `$37.55` — a 11,000× gap, because one pool carries the average |
+| Dust pools | **133** | 78.7% of pools hold under $1, so most of the 169 are not really markets |
+| Top venue | **49.1%** | COOKIEBOX DAMM alone holds nearly half of all liquidity |
+| Mints with a pool | **84** | Against 6,547 tokens in the index |
+
+Those numbers are recomputed independently inside `verify.mjs`, straight from the raw API, and
+compared against what the page rendered — a derived panel that quietly disagrees with its own
+source is worse than no panel.
 
 **Write half — needs a small amount of COOK.** A single **Memo** instruction is written into a
 real Cookie Chain transaction. It is the cheapest honest way to prove a wallet executed
@@ -31,10 +48,14 @@ broadcast, confirm, report.
 
 ## Why it is built this way
 
-**The read half needs no tokens on purpose.** Cookie Chain has no faucet and no testnet — the
+**The read half needs no tokens on purpose.** Cookie Chain ships no faucet and no testnet, so the
 only ways to obtain COOK are the bridge, a DEX swap, or a transfer from another holder. A
 dashboard that demanded COOK before showing anything would be useless to a first-time visitor.
 So the analytics load for everyone, and the stamp is opt-in.
+
+**The message field shows what it will actually send.** Leaving it empty stamps the default rather
+than an empty memo, so the line under the field always prints the resolved string. An empty box
+with a filled-looking placeholder is how a stamp ends up carrying text nobody typed.
 
 **The wallet integration follows the standard, not a guess.** Nightly documents
 `window.nightly.solana`, but it is also a Solana Wallet Standard wallet. Cookie Board checks the
@@ -158,6 +179,14 @@ node verify.mjs http://localhost:8080/
 It checks that the network cards fill in, that the market table and chart render, that venue
 filtering changes the row count, that token search returns results, and it reports every
 console error, page error and failed request. A screenshot is written to `verify-shot.png`.
+
+Two checks go further than "the page rendered something":
+
+- **The derived figures are recomputed from the raw API inside the script** and compared against
+  what the page displayed. `MATCH` or `DIFFER` is printed per figure, so a panel that drifts away
+  from its own source cannot pass silently.
+- **The message field is driven** — typed into, cleared, and read back — to prove the line under it
+  tracks the input and falls back to the default.
 
 `verify-stamp.mjs` covers the other half — the part that needs a wallet, and therefore the part
 most likely to be wrong without anyone noticing. It rebuilds the exact Memo transaction `app.js`

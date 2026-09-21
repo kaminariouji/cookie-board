@@ -41,6 +41,10 @@ const WALLET_STD_SOURCES = [
 const NET_REFRESH_MS = 15000
 const CHART_BARS = 12
 
+// What the stamp writes when the message field is left empty. Kept here so the field preview,
+// the instruction data and the result box can never disagree about it.
+const DEFAULT_MEMO = 'gm from Cookie Board'
+
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers
 // ---------------------------------------------------------------------------
@@ -201,8 +205,9 @@ const NET_CARDS = [
 
 function renderNetSkeleton() {
   const box = $('net-cards')
-  box.replaceChildren(...NET_CARDS.map(([, key]) => {
-    const card = pendingCard(key)
+  // The human label, not the key — the key is camelCase and belongs in data-key only.
+  box.replaceChildren(...NET_CARDS.map(([label, key]) => {
+    const card = pendingCard(label)
     card.dataset.key = key
     return card
   }))
@@ -280,6 +285,11 @@ async function loadNetwork() {
   if (markets) {
     fillNetCard('marketCount', fmtInt(markets.marketCount))
     renderMarkets(markets)
+    // Derived from the rows just rendered, so this costs no extra request.
+    renderDepth(computeDepth(allMarkets, status?.totalTokens))
+    clearError($('depth-error'))
+  } else {
+    showError($('depth-error'), 'The market index did not respond, so these figures cannot be computed.')
   }
 
   $('net-updated').textContent = 'updated ' + new Date().toLocaleTimeString()
@@ -426,6 +436,106 @@ function renderMarkets(payload) {
   renderMarketsChart(allMarkets)
   applyMarketView()
   clearError($('markets-error'))
+}
+
+// ---------------------------------------------------------------------------
+// Depth panel — figures derived from the index instead of served by it
+// ---------------------------------------------------------------------------
+
+/**
+ * The index returns one row per pool and nothing that answers "how concentrated is this chain,
+ * really". That answer is computed here, from rows already in memory.
+ *
+ * The dust threshold is stated in the card note rather than hidden in this comment, so the
+ * number can be read without trusting the code.
+ */
+const DUST_USD = 1
+const TOP_POOLS = 5
+
+const DEPTH_CARDS = [
+  ['Top 5 concentration', 'top5'],
+  ['Median pool', 'median'],
+  ['Dust pools', 'dust'],
+  ['Top venue', 'venue'],
+  ['Mints with a pool', 'coverage'],
+]
+
+function renderDepthSkeleton() {
+  const box = $('depth-cards')
+  box.replaceChildren(...DEPTH_CARDS.map(([label, key]) => {
+    const card = pendingCard(label)
+    card.dataset.key = key
+    return card
+  }))
+}
+
+function fillDepthCard(key, value, note) {
+  const box = $('depth-cards')
+  const card = box.querySelector('[data-key="' + key + '"]')
+  if (!card) return
+  card.classList.remove('is-pending')
+  card.querySelector('.card-value').textContent = value
+  const existing = card.querySelector('.card-note')
+  if (note) {
+    if (existing) existing.textContent = note
+    else card.append(el('div', 'card-note', note))
+  } else if (existing) {
+    existing.remove()
+  }
+}
+
+/** Share of a total, as a percentage string. Returns an em dash rather than dividing by zero. */
+function pct(part, whole) {
+  return whole > 0 ? ((part / whole) * 100).toFixed(1) + '%' : '—'
+}
+
+function computeDepth(markets, totalTokens) {
+  const liquidity = markets.map((m) => (Number.isFinite(m.liquidityUsd) ? m.liquidityUsd : 0))
+  const total = liquidity.reduce((a, b) => a + b, 0)
+  const ranked = liquidity.slice().sort((a, b) => b - a)
+
+  const byVenue = new Map()
+  const mints = new Set()
+  for (const m of markets) {
+    const venue = m.type || 'unknown'
+    byVenue.set(venue, (byVenue.get(venue) || 0) + (Number.isFinite(m.liquidityUsd) ? m.liquidityUsd : 0))
+    if (m.baseToken?.mint) mints.add(m.baseToken.mint)
+    if (m.quoteToken?.mint) mints.add(m.quoteToken.mint)
+  }
+
+  return {
+    pools: markets.length,
+    total,
+    top: ranked.slice(0, TOP_POOLS).reduce((a, b) => a + b, 0),
+    median: ranked.length ? ranked[Math.floor(ranked.length / 2)] : NaN,
+    mean: ranked.length ? total / ranked.length : NaN,
+    dust: liquidity.filter((v) => v < DUST_USD).length,
+    venues: [...byVenue.entries()].sort((a, b) => b[1] - a[1]),
+    mints: mints.size,
+    totalTokens,
+  }
+}
+
+function renderDepth(d) {
+  fillDepthCard(
+    'top5',
+    pct(d.top, d.total),
+    `${fmtUsd(d.top)} of ${fmtUsd(d.total)} sits in the top ${TOP_POOLS} of ${fmtInt(d.pools)} pools`,
+  )
+
+  // The distance between these two is the whole point: a handful of large pools drag the
+  // average far above what a typical pool actually holds.
+  fillDepthCard('median', fmtUsd(d.median), `mean pool is ${fmtUsd(d.mean)}`)
+
+  fillDepthCard('dust', fmtInt(d.dust), `${pct(d.dust, d.pools)} of pools hold under $${DUST_USD}`)
+
+  const [venue, venueLiquidity] = d.venues[0] ?? ['—', 0]
+  fillDepthCard('venue', pct(venueLiquidity, d.total), `${venue} · ${fmtUsd(venueLiquidity)}`)
+
+  const indexed = Number.isFinite(d.totalTokens)
+    ? ` against ${fmtInt(d.totalTokens)} tokens in the index`
+    : ''
+  fillDepthCard('coverage', fmtInt(d.mints), `mints appear in at least one pool${indexed}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -896,6 +1006,20 @@ function normalizeSignature(value) {
   return null
 }
 
+/** The exact string the next stamp will write. Empty field means the default, not an empty memo. */
+function effectiveMemo() {
+  return ($('stamp-text').value || '').trim() || DEFAULT_MEMO
+}
+
+/**
+ * The field is a hint, not a value, so an empty box still stamps the default. Showing the
+ * resolved string keeps the visible field and the on-chain memo from drifting apart — which is
+ * exactly the confusion an empty field with a filled-looking placeholder causes.
+ */
+function renderEffectiveMemo() {
+  $('stamp-effective').textContent = 'Will send: “' + effectiveMemo() + '”'
+}
+
 async function stamp() {
   const btn = $('btn-stamp')
   const resultBox = $('stamp-result')
@@ -905,7 +1029,7 @@ async function stamp() {
     return
   }
 
-  const text = ($('stamp-text').value || '').trim() || 'gm from Cookie Board'
+  const text = effectiveMemo()
   if (text.length > 120) {
     showError($('stamp-error'), 'Memo must be 120 characters or fewer.')
     return
@@ -1033,6 +1157,7 @@ function bind() {
 
   $('btn-disconnect').addEventListener('click', disconnectWallet)
   $('btn-stamp').addEventListener('click', stamp)
+  $('stamp-text').addEventListener('input', renderEffectiveMemo)
   $('btn-load-tokens').addEventListener('click', loadFullDirectory)
 
   $('venue-filter').addEventListener('change', applyMarketView)
@@ -1050,7 +1175,9 @@ function bind() {
 async function main() {
   bind()
   resetSteps()
+  renderEffectiveMemo()
   renderNetSkeleton()
+  renderDepthSkeleton()
 
   await Promise.allSettled([loadNetwork(), initWallets()])
 

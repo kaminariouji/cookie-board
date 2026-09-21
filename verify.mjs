@@ -71,6 +71,70 @@ const filtered = await page.$$eval('#markets-table tbody tr', (r) => r.length)
 console.log('\n=== VENUE FILTER (COOKIESWAP CPAMM) ===')
 console.log('  rows          :', filtered)
 
+// ---------------------------------------------------------------------------
+// Depth panel. Recompute the same figures here from the raw API and compare — a derived panel
+// that quietly disagrees with the data it claims to derive from is worse than no panel at all.
+// ---------------------------------------------------------------------------
+
+const depthCards = await page.$$eval('#depth-cards .card', (cards) =>
+  cards.map((c) => ({
+    label: c.querySelector('.card-label')?.textContent?.trim(),
+    value: c.querySelector('.card-value')?.textContent?.trim(),
+    note: c.querySelector('.card-note')?.textContent?.trim() || '',
+  })),
+)
+
+console.log('\n=== DEPTH CARDS (rendered) ===')
+for (const c of depthCards) {
+  console.log(`  ${String(c.label).padEnd(22)} ${String(c.value).padEnd(10)} ${c.note}`)
+}
+
+const rawMarkets = (await (await fetch('https://api.cookiescan.io/api/markets')).json()).markets
+const rawStatus = await (await fetch('https://api.cookiescan.io/api/status')).json()
+
+const rawLiq = rawMarkets.map((m) => (Number.isFinite(m.liquidityUsd) ? m.liquidityUsd : 0))
+const rawTotal = rawLiq.reduce((a, b) => a + b, 0)
+const rawRanked = rawLiq.slice().sort((a, b) => b - a)
+const rawMints = new Set(
+  rawMarkets.flatMap((m) => [m.baseToken?.mint, m.quoteToken?.mint]).filter(Boolean),
+)
+
+const expected = {
+  'Top 5 concentration': ((rawRanked.slice(0, 5).reduce((a, b) => a + b, 0) / rawTotal) * 100).toFixed(1) + '%',
+  'Dust pools': String(rawLiq.filter((v) => v < 1).length),
+  'Mints with a pool': String(rawMints.size),
+}
+const rendered = Object.fromEntries(depthCards.map((c) => [c.label, c.value]))
+
+console.log('\n=== DEPTH CROSS-CHECK (recomputed from the raw API) ===')
+let depthMismatch = 0
+for (const [label, want] of Object.entries(expected)) {
+  const got = rendered[label]
+  const ok = got === want
+  if (!ok) depthMismatch++
+  console.log(`  ${ok ? 'MATCH ' : 'DIFFER'}  ${label.padEnd(22)} page=${got}  recomputed=${want}`)
+}
+console.log('  indexed tokens reported by /api/status :', rawStatus.totalTokens)
+
+// ---------------------------------------------------------------------------
+// Message field: the visible field and the string that gets stamped must not drift apart.
+// ---------------------------------------------------------------------------
+
+console.log('\n=== MESSAGE FIELD ===')
+const memoOf = async () => ((await page.textContent('#stamp-effective')) || '').trim()
+const memoEmpty = await memoOf()
+await page.fill('#stamp-text', 'hello chain')
+await page.waitForTimeout(200)
+const memoTyped = await memoOf()
+await page.fill('#stamp-text', '')
+await page.waitForTimeout(200)
+const memoCleared = await memoOf()
+console.log('  field empty    :', memoEmpty)
+console.log('  after typing   :', memoTyped)
+console.log('  cleared again  :', memoCleared)
+console.log('  tracks input   :', memoTyped.includes('hello chain') ? 'yes' : 'NO')
+console.log('  falls back     :', memoCleared === memoEmpty ? 'yes' : 'NO')
+
 // Load the full directory (~3.9 MB). This path is the easiest to break silently.
 console.log('\n=== LOAD FULL DIRECTORY ===')
 const t0 = Date.now()
