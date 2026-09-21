@@ -267,12 +267,25 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp has not been confirmed on chain end to end.** A funded wallet has signed and
-  broadcast a real stamp — Phantom, over a real COOK balance — and the transaction left the app
-  as `sent`. What is still unproven is the confirmation step: the run that got that far hit the
-  base58 bug above, so the app never read the result back. Every hop is now verified
-  individually (`verify-stamp.mjs` for the instruction, `verify-signing.mjs` for encoding and
-  the signing call), but nobody has yet watched a signature come back `confirmed`.
+- **The stamp is confirmed on chain.** A funded wallet signed a stamp and the app read the result
+  back as confirmed. Read straight from Cookie Chain's RPC, not from the app:
+
+  ```
+  signature : 23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
+  slot      : 26446164
+  err       : null
+  fee       : 5000 lamports
+  log       : Program log: Memo (len 20): "gm from Cookie Board"
+  ```
+
+  https://cookiescan.io/tx/23prywrS5kpXokJYxMjw4B771EWT7hTtwEm1yABuwrXTE5jF6JQaTTbP4GdwB2rVTSreHDuofDC5Y8iecGUPfSK8
+
+  That run exercised every hop in one pass: build, wallet signature, broadcast, confirmation. The
+  three wallet bugs below were found on the way there, and each one was only visible against a
+  real wallet — none of them showed up in the individual hop tests.
+- **The stamp needs a funded wallet, and Cookie Chain has no official faucet.** The dashboard
+  above works without any COOK; only the stamp needs a balance, because it pays a network fee.
+  Getting COOK means bridging from Solana or receiving it from an existing wallet.
 - **Wallet-reported chain ids vary.** A wallet that lists the account as `solana:mainnet` while
   pointed at Cookie Chain's RPC will still sign the bytes we hand it, because the transaction is
   serialized locally with a Cookie Chain blockhash. If a wallet rejects on chain mismatch, the
