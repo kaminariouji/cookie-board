@@ -41,6 +41,21 @@ So the analytics load for everyone, and the stamp is opt-in.
 documented path first and then falls back to the Wallet Standard registry, so any compliant
 wallet works and Nightly is always preferred.
 
+Two things about Nightly were only learned by testing against the real extension. Both are now
+handled explicitly, and both would have been missed by reading the spec alone:
+
+- **It injects late.** Phantom, Solflare and MetaMask attach themselves before `app.js` runs;
+  Nightly arrives afterwards. A single check at startup therefore finds every wallet *except*
+  Nightly — which is exactly the wallet the bounty asks for. Detection now re-runs on a short
+  schedule and also listens for the Wallet Standard `register` event, so a wallet that shows up
+  late is picked up without a reload.
+- **It publishes signing features on the wallet, not the account.** The standard puts
+  `solana:signAndSendTransaction` and `solana:signTransaction` on the `WalletAccount`; Nightly
+  puts them on `window.nightly.solana.features` and returns accounts with no `features` at all.
+  Looking only at the account made the app conclude the wallet could not sign. `signingFeature()`
+  now searches both, and passes `account` explicitly when the feature came from the wallet, which
+  is what that variant requires.
+
 **Dependencies load from two CDNs.** Solana libraries are large; if one host is slow the page
 would render blank. `loadModule()` walks a list of sources and only gives up when all fail.
 
@@ -75,10 +90,17 @@ is not honoured on the Pages path, which leaks `verify.mjs`, `package.json` and 
 the public URL. `deploy.mjs` stages only the three browser files and verifies the staging
 directory before uploading.
 
+Wrangler reads `CLOUDFLARE_API_TOKEN` from a `.env` file **in the working directory**, not from
+the directory the script lives in. Run `deploy.mjs` from wherever your `.env` is:
+
 ```bash
-set -a && . ../.env && set +a   # provides CLOUDFLARE_API_TOKEN
-node deploy.mjs cookie-board
+cd /path/to/dir/holding/.env
+node /path/to/cookie-board/deploy.mjs cookie-board
 ```
+
+Running it from inside `cookie-board/` fails with *"In a non-interactive environment, it's
+necessary to set a CLOUDFLARE_API_TOKEN"* even when the token is valid and present. Staging is
+unaffected either way, because the script resolves its own paths from `import.meta.url`.
 
 First time only, create the project:
 
@@ -149,6 +171,31 @@ only a fee payer with signature verification off — nothing is signed and nothi
 an invented address instead makes the simulation abort at `AccountNotFound` before the Memo
 instruction ever runs, which would prove nothing.
 
+`verify-wallet.mjs` reproduces the late-injection problem without needing the extension. It loads
+the page, confirms the app reports no wallet, then injects `window.nightly` **afterwards** and
+asserts the UI recovers on its own:
+
+```bash
+node verify-wallet.mjs https://cookie-board-4fv.pages.dev/
+```
+
+```
+LULUS  awal: state bilang tidak terdeteksi
+LULUS  akhir: state jadi "Nightly detected"
+LULUS  akhir: tombol Connect muncul lagi
+SEMUA LULUS
+```
+
+`verify-signing.mjs` covers the wallet-level signing features. It injects a stand-in that copies
+Nightly's shape — signing features on the wallet, an account with **no** `features` — then clicks
+Connect and Stamp and asserts the signing method is actually reached, with `account` attached:
+
+```bash
+node verify-signing.mjs https://cookie-board-4fv.pages.dev/
+```
+
+Both scripts accept a URL argument, so the same check runs against localhost and production.
+
 ---
 
 ## API reference used
@@ -204,11 +251,13 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp is verified at the transaction level, not end-to-end with a wallet.** The Memo
-  instruction is proven valid by Cookie Chain's own runtime simulation (`verify-stamp.mjs`), but
-  the last hop — a wallet actually signing — has not been exercised against a funded account,
-  because obtaining COOK requires bridging real assets. The UI detects a zero balance and explains
-  how to fix it rather than failing at the signature prompt.
+- **The stamp has not been exercised end-to-end with a funded wallet.** Three of the four hops are
+  proven: the Memo instruction by Cookie Chain's own runtime simulation (`verify-stamp.mjs`),
+  wallet detection against the real Nightly extension, and the signing call against a stand-in
+  that copies Nightly's feature layout (`verify-signing.mjs`). The last hop — a real signature
+  over a real balance — needs COOK, and obtaining COOK requires bridging assets from Solana.
+  The UI detects a zero balance and explains how to fix it rather than failing at the signature
+  prompt.
 - **Wallet-reported chain ids vary.** A wallet that lists the account as `solana:mainnet` while
   pointed at Cookie Chain's RPC will still sign the bytes we hand it, because the transaction is
   serialized locally with a Cookie Chain blockhash. If a wallet rejects on chain mismatch, the
@@ -231,6 +280,8 @@ cookie-board/
 ├── deploy.mjs        stages the three browser files and deploys them
 ├── verify.mjs        Playwright check that the panels actually populate
 ├── verify-stamp.mjs  simulates the Memo transaction against Cookie Chain
+├── verify-wallet.mjs reproduces late wallet injection and checks the UI recovers
+├── verify-signing.mjs checks wallet-level signing features are reached
 ├── find-payer.mjs    finds a real funded account to use as a simulation fee payer
 ├── X-THREAD.md       the launch thread
 ├── SUBMISSION.md     the three eligibility answers, filled in

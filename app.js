@@ -609,6 +609,20 @@ function isWalletLike(obj) {
   return Boolean(obj && obj.features && obj.features['standard:connect'])
 }
 
+let walletRegistry = null
+
+/** Registry is a bonus, not a requirement — window.nightly alone is enough. */
+async function getWalletRegistry() {
+  if (walletRegistry) return walletRegistry
+  try {
+    const mod = await loadModule(WALLET_STD_SOURCES)
+    walletRegistry = mod.getWallets()
+  } catch {
+    walletRegistry = null
+  }
+  return walletRegistry
+}
+
 async function detectWallets() {
   const found = []
   const seen = new Set()
@@ -621,9 +635,8 @@ async function detectWallets() {
   }
 
   // Wallet Standard registry picks up every compliant extension, Nightly included.
-  try {
-    const mod = await loadModule(WALLET_STD_SOURCES)
-    const registry = mod.getWallets()
+  const registry = await getWalletRegistry()
+  if (registry) {
     for (const w of registry.get()) {
       if (seen.has(w.name)) continue
       if (!isWalletLike(w)) continue
@@ -633,8 +646,6 @@ async function detectWallets() {
       found.push({ name: w.name, source: w })
       seen.add(w.name)
     }
-  } catch {
-    // Registry is a bonus, not a requirement — window.nightly above is enough.
   }
 
   return found
@@ -735,10 +746,11 @@ function updateWalletButtons() {
   $('wallet-select').hidden = connected || wallet.available.length < 2
 }
 
-async function initWallets() {
-  wallet.available = await detectWallets()
-
+function renderWalletUi() {
   const select = $('wallet-select')
+  const connect = $('btn-connect')
+  const install = $('install-nightly')
+
   select.replaceChildren()
   for (const w of wallet.available) {
     const opt = el('option', '', w.name)
@@ -748,25 +760,52 @@ async function initWallets() {
 
   if (!wallet.available.length) {
     setWalletState('No Solana wallet detected')
-    const install = el('a', 'btn btn-primary', 'Install Nightly')
+    connect.hidden = true
+    select.hidden = true
     install.href = NIGHTLY_URL
-    install.target = '_blank'
-    install.rel = 'noreferrer noopener'
-    install.style.textDecoration = 'none'
-    $('btn-connect').replaceWith(install)
-    showError($('stamp-error'), 'No wallet extension found. Install Nightly from ' + NIGHTLY_URL + ' and reload this page.')
+    install.hidden = false
     return
   }
+
+  install.hidden = true
+  clearError($('stamp-error'))
 
   // Nightly first — it is the wallet the bounty asks for.
   const preferred = wallet.available.find((w) => w.name === 'Nightly') ?? wallet.available[0]
   select.value = preferred.name
   wallet.selected = preferred
 
-  $('btn-connect').hidden = false
-  $('btn-connect').textContent = 'Connect ' + preferred.name
-  $('wallet-select').hidden = wallet.available.length < 2
+  connect.hidden = false
+  connect.textContent = 'Connect ' + preferred.name
+  select.hidden = wallet.available.length < 2
   setWalletState(preferred.name + ' detected')
+}
+
+async function initWallets() {
+  wallet.available = await detectWallets()
+  renderWalletUi()
+
+  // Extensions inject window.nightly on their own schedule — often after this module
+  // has already run. The registry announces wallets as they appear; the retries below
+  // cover a wallet that only ever shows up on window.nightly.
+  const registry = await getWalletRegistry()
+  registry?.on?.('register', async () => {
+    if (wallet.account) return
+    wallet.available = await detectWallets()
+    if (wallet.available.length) renderWalletUi()
+  })
+
+  if (wallet.available.length) return
+
+  for (const delay of [150, 400, 1000, 2500]) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    if (wallet.account) return
+    wallet.available = await detectWallets()
+    if (wallet.available.length) {
+      renderWalletUi()
+      return
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +835,20 @@ function markStep(step, state) {
  * must sign the exact bytes we broadcast — so we serialize locally and hand the bytes
  * to the wallet rather than letting it build its own transaction.
  */
+/**
+ * Signing features belong to the WalletAccount per the standard, but some wallets publish them
+ * on the Wallet instead — Nightly does exactly that (`window.nightly.solana.features` carries
+ * signAndSendTransaction and signTransaction). A feature taken from the Wallet needs its account
+ * passed in explicitly, which is what `needsAccount` records.
+ */
+function signingFeature(name) {
+  const onAccount = wallet.account?.features?.[name]
+  if (onAccount) return { feature: onAccount, needsAccount: false }
+  const onWallet = wallet.selected?.source?.features?.[name]
+  if (onWallet) return { feature: onWallet, needsAccount: true }
+  return null
+}
+
 async function stamp() {
   const btn = $('btn-stamp')
   const resultBox = $('stamp-result')
@@ -842,18 +895,12 @@ async function stamp() {
     // ---- sign + send
     markStep('sign', 'is-active')
     const chain = wallet.account.chains?.[0] ?? CHAIN_ID
-    const signAndSendFeature = wallet.account.features?.['solana:signAndSendTransaction']
+    const signAndSend = signingFeature('solana:signAndSendTransaction')
 
-    if (signAndSendFeature) {
+    if (signAndSend) {
       const input = { transaction: serialized, chain, options: { skipPreflight: false } }
-      let outputs
-      try {
-        outputs = await signAndSendFeature.signAndSendTransaction(input)
-      } catch (err) {
-        // Wallet-level feature variants expect the account to be passed in explicitly.
-        if (!/account/i.test(String(err?.message))) throw err
-        outputs = await signAndSendFeature.signAndSendTransaction({ ...input, account: wallet.account })
-      }
+      if (signAndSend.needsAccount) input.account = wallet.account
+      const outputs = await signAndSend.feature.signAndSendTransaction(input)
       const first = Array.isArray(outputs) ? outputs[0] : outputs
       signature = first?.signature ?? first
       if (!signature) throw new Error('Wallet returned no signature.')
@@ -861,9 +908,11 @@ async function stamp() {
       markStep('send', 'is-done')
     } else {
       // Fallback for wallets that only expose signing.
-      const signFeature = wallet.account.features?.['solana:signTransaction']
-      if (!signFeature) throw new Error('This wallet exposes neither signAndSendTransaction nor signTransaction.')
-      const outputs = await signFeature.signTransaction({ transaction: serialized, chain })
+      const sign = signingFeature('solana:signTransaction')
+      if (!sign) throw new Error('This wallet exposes neither signAndSendTransaction nor signTransaction.')
+      const input = { transaction: serialized, chain }
+      if (sign.needsAccount) input.account = wallet.account
+      const outputs = await sign.feature.signTransaction(input)
       const signed = (Array.isArray(outputs) ? outputs[0] : outputs)?.signedTransaction
       if (!signed) throw new Error('Wallet returned no signed transaction.')
       markStep('sign', 'is-done')
