@@ -1,0 +1,7 @@
+node_modules/
+deploy-stage/
+.wrangler/
+verify-shot.png
+.env
+.env.*
+*.log

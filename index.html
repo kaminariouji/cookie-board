@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cookie Board — Cookie Chain intelligence &amp; on-chain stamp</title>
+<meta name="description" content="Live Cookie Chain dashboard: network stats, COOK price, CookieSwap/CookieBox liquidity and token analytics. Connect Nightly to stamp the board on-chain." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127850;</text></svg>" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">&#127850;</span>
+    <div>
+      <h1>Cookie Board</h1>
+      <p class="brand-sub">Cookie Chain intelligence &amp; on-chain stamp</p>
+    </div>
+  </div>
+
+  <div class="wallet-box">
+    <div id="wallet-state" class="wallet-state" role="status" aria-live="polite">Detecting wallets…</div>
+    <div class="wallet-actions">
+      <select id="wallet-select" class="wallet-select" aria-label="Wallet" hidden></select>
+      <button id="btn-connect" class="btn btn-primary" type="button" hidden>Connect Nightly</button>
+      <button id="btn-disconnect" class="btn btn-ghost" type="button" hidden>Disconnect</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ NETWORK ============ -->
+  <section class="panel" aria-labelledby="h-network">
+    <div class="panel-head">
+      <h2 id="h-network">Network</h2>
+      <span id="net-updated" class="muted"></span>
+    </div>
+    <div id="net-cards" class="cards" aria-busy="true"></div>
+    <p id="net-error" class="error" hidden></p>
+  </section>
+
+  <!-- ============ ON-CHAIN STAMP ============ -->
+  <section class="panel" aria-labelledby="h-stamp">
+    <div class="panel-head">
+      <h2 id="h-stamp">Stamp the board on-chain</h2>
+      <span class="muted">Memo program &middot; real Cookie Chain transaction</span>
+    </div>
+
+    <p class="lede">
+      Writes your message into a Cookie Chain transaction using the on-chain
+      <code>Memo</code> program. It is the cheapest possible way to prove a wallet really
+      executed something on this chain. Cost is one signature fee, paid in COOK.
+    </p>
+
+    <div class="stamp-grid">
+      <label class="field">
+        <span>Message</span>
+        <input id="stamp-text" type="text" maxlength="120" placeholder="gm from Cookie Board" />
+      </label>
+      <button id="btn-stamp" class="btn btn-primary" type="button" disabled>Stamp on-chain</button>
+    </div>
+
+    <ol id="stamp-steps" class="steps" aria-live="polite">
+      <li data-step="build">Build transaction</li>
+      <li data-step="sign">Request signature from wallet</li>
+      <li data-step="send">Broadcast to Cookie Chain</li>
+      <li data-step="confirm">Confirm on-chain</li>
+    </ol>
+
+    <div id="stamp-result" class="stamp-result" hidden></div>
+    <p id="stamp-error" class="error" hidden></p>
+  </section>
+
+  <!-- ============ MARKETS ============ -->
+  <section class="panel" aria-labelledby="h-markets">
+    <div class="panel-head">
+      <h2 id="h-markets">Liquidity markets</h2>
+      <span id="markets-summary" class="muted"></span>
+    </div>
+
+    <div class="chart-wrap">
+      <h3 class="chart-title">Top markets by liquidity (USD)</h3>
+      <div id="markets-chart" class="chart" role="img" aria-label="Bar chart of top markets by liquidity"></div>
+    </div>
+
+    <div class="table-controls">
+      <label class="field field-inline">
+        <span>Filter venue</span>
+        <select id="venue-filter"><option value="">All venues</option></select>
+      </label>
+      <label class="field field-inline">
+        <span>Sort by</span>
+        <select id="market-sort">
+          <option value="liquidity">Liquidity</option>
+          <option value="base">Base price</option>
+          <option value="quote">Quote price</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="table-scroll">
+      <table id="markets-table">
+        <thead>
+          <tr>
+            <th scope="col">Pair</th>
+            <th scope="col">Venue</th>
+            <th scope="col" class="num">Liquidity (USD)</th>
+            <th scope="col">Reserves</th>
+            <th scope="col">Market ID</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="markets-error" class="error" hidden></p>
+  </section>
+
+  <!-- ============ TOKENS ============ -->
+  <section class="panel" aria-labelledby="h-tokens">
+    <div class="panel-head">
+      <h2 id="h-tokens">Token analytics</h2>
+      <span id="tokens-summary" class="muted"></span>
+    </div>
+
+    <p class="lede">
+      Search is served by the CookieScan index and returns instantly. The full directory is
+      a multi-megabyte payload, so it loads only when you ask for it — then the table below
+      sorts and filters locally without another request.
+    </p>
+
+    <div class="table-controls">
+      <label class="field field-inline grow">
+        <span>Search symbol or name</span>
+        <input id="token-search" type="search" placeholder="cook, silv, bonk…" autocomplete="off" />
+      </label>
+      <button id="btn-load-tokens" class="btn btn-ghost" type="button">Load full directory</button>
+    </div>
+
+    <div id="tokens-loading" class="muted" hidden>Loading full token directory…</div>
+
+    <div class="table-scroll">
+      <table id="tokens-table">
+        <thead>
+          <tr>
+            <th scope="col">Token</th>
+            <th scope="col">Mint</th>
+            <th scope="col" class="num">Price (USD)</th>
+            <th scope="col" class="num">Market cap</th>
+            <th scope="col" class="num">Liquidity</th>
+            <th scope="col" class="num">Holders</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="tokens-error" class="error" hidden></p>
+  </section>
+
+  <footer class="footer">
+    <p>
+      Read layer: <a href="https://api.cookiescan.io" target="_blank" rel="noreferrer noopener">api.cookiescan.io</a>
+      &middot; RPC: <code>https://rpc.cookiescan.io</code>
+      &middot; Explorer: <a href="https://cookiescan.io" target="_blank" rel="noreferrer noopener">cookiescan.io</a>
+      &middot; Bridge: <a id="bridge-link" href="https://hyperlane.cookiescan.io" target="_blank" rel="noreferrer noopener">hyperlane.cookiescan.io</a>
+    </p>
+    <p class="muted small">
+      Not affiliated with Cookie Chain. Data is read live from public endpoints; nothing here is financial advice.
+    </p>
+  </footer>
+
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
