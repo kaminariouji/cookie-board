@@ -99,9 +99,11 @@ Nightly needs to be pointed at this chain before it can sign anything here.
 
 ### Getting COOK for the stamp
 
-There is no faucet. Bridge COOK from Solana at <https://hyperlane.cookiescan.io>. One
-transaction costs a single signature fee, paid in COOK — at the time of writing COOK trades
-around $0.00008, so the fee is a fraction of a cent. Any non-zero balance is enough.
+There is no faucet. Bridge COOK from Solana at <https://hyperlane.cookiescan.io>.
+
+The fee is one signature. Cookie Chain's own RPC reports it: **5,000 lamports = 0.000005 COOK**,
+which at the current COOK price is about **$0.0000000004**. Any non-zero balance covers hundreds
+of thousands of stamps.
 
 ---
 
@@ -120,6 +122,31 @@ node verify.mjs http://localhost:8080/
 It checks that the network cards fill in, that the market table and chart render, that venue
 filtering changes the row count, that token search returns results, and it reports every
 console error, page error and failed request. A screenshot is written to `verify-shot.png`.
+
+`verify-stamp.mjs` covers the other half — the part that needs a wallet, and therefore the part
+most likely to be wrong without anyone noticing. It rebuilds the exact Memo transaction `app.js`
+builds, then asks Cookie Chain to simulate it:
+
+```bash
+node verify-stamp.mjs
+```
+
+```
+Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr invoke [1]
+Program log: Signed by DL9GPSXrhAEnU5Ads3HLhEJ9fCDLpnmmkzxoe712W4xP
+Program log: Memo (len 20): "gm from Cookie Board"
+Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr consumed 22204 of 200000 compute units
+Program MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr success
+```
+
+`err: null` means the chain's runtime accepted the instruction, the Memo program is present and
+executable, and the text lands in the transaction log. The same run asks the RPC for the real fee
+rather than guessing: **5,000 lamports**.
+
+The fee payer in that test is a real funded Cookie Chain account found by `find-payer.mjs`. It is
+only a fee payer with signature verification off — nothing is signed and nothing is spent. Using
+an invented address instead makes the simulation abort at `AccountNotFound` before the Memo
+instruction ever runs, which would prove nothing.
 
 ---
 
@@ -176,9 +203,11 @@ ids are defined: `solana:` plus the first 32 characters of the genesis hash.
 
 These are real and worth stating rather than hiding.
 
-- **The stamp cannot be tested with an empty wallet.** It needs a non-zero COOK balance to pay
-  the fee. The UI detects a zero balance and explains how to fix it instead of failing at the
-  signature prompt.
+- **The stamp is verified at the transaction level, not end-to-end with a wallet.** The Memo
+  instruction is proven valid by Cookie Chain's own runtime simulation (`verify-stamp.mjs`), but
+  the last hop — a wallet actually signing — has not been exercised against a funded account,
+  because obtaining COOK requires bridging real assets. The UI detects a zero balance and explains
+  how to fix it rather than failing at the signature prompt.
 - **Wallet-reported chain ids vary.** A wallet that lists the account as `solana:mainnet` while
   pointed at Cookie Chain's RPC will still sign the bytes we hand it, because the transaction is
   serialized locally with a Cookie Chain blockhash. If a wallet rejects on chain mismatch, the
@@ -200,8 +229,11 @@ cookie-board/
 ├── dev-server.mjs    static file server for local development
 ├── deploy.mjs        stages the three browser files and deploys them
 ├── verify.mjs        Playwright check that the panels actually populate
+├── verify-stamp.mjs  simulates the Memo transaction against Cookie Chain
+├── find-payer.mjs    finds a real funded account to use as a simulation fee payer
 ├── X-THREAD.md       the launch thread
-└── package.json      dev dependency for verify.mjs only
+├── SUBMISSION.md     the three eligibility answers, filled in
+└── package.json      dev dependencies for the verification scripts
 ```
 
 ## License
