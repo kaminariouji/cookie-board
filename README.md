@@ -167,11 +167,21 @@ Nightly needs to be pointed at this chain before it can sign anything here.
 
 ### Getting COOK for the stamp
 
-There is no faucet. Bridge COOK from Solana at <https://hyperlane.cookiescan.io>.
+Cookie Chain ships no faucet and no testnet, so getting COOK is the slowest part of trying the
+stamp. Three routes:
+
+1. **A community faucet, when it happens to be funded.** The Arisan app — another entry in this
+   bounty, not a Cookie Chain service — has a `Get demo COOK` page at
+   <https://arisan-cook.vercel.app/#faucet> that sends **0.5 COOK** to a wallet, capped at one claim
+   per wallet per hour. That team funds it out of their own pocket, so it runs dry: when this was
+   last checked the pool held **0.4998 COOK**, which is less than a single claim. Worth trying
+   because it is free and instant, but do not count on it.
+2. **Receive COOK** from anyone who already holds some.
+3. **Bridge from Solana** at <https://hyperlane.cookiescan.io> — the only route that always works.
 
 The fee is one signature. Cookie Chain's own RPC reports it: **5,000 lamports = 0.000005 COOK**,
-which at the current COOK price is about **$0.0000000004**. Any non-zero balance covers hundreds
-of thousands of stamps.
+which at the current COOK price is about **$0.0000000004**. So 0.5 COOK covers about a hundred
+thousand stamps, and one successful claim is effectively unlimited.
 
 ---
 
@@ -342,7 +352,9 @@ These are real and worth stating rather than hiding.
   against a real wallet, never in the individual hop tests.
 - **The stamp needs a funded wallet, and Cookie Chain has no official faucet.** The dashboard
   above works without any COOK; only the stamp needs a balance, because it pays a network fee.
-  Getting COOK means bridging from Solana or receiving it from an existing wallet.
+  See [Getting COOK for the stamp](#getting-cook-for-the-stamp) — a community faucet run by another
+  team in this bounty is the free route when it is funded, and bridging from Solana is the one that
+  always works.
 - **Wallet-reported chain ids vary.** A wallet that lists the account as `solana:mainnet` while
   pointed at Cookie Chain's RPC will still sign the bytes we hand it, because the transaction is
   serialized locally with a Cookie Chain blockhash. If a wallet rejects on chain mismatch, the
